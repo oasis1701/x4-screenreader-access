@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mdscript name="NVDA_Accessibility" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="md.xsd">
+    <cues>
+        <!-- Register Python module with SirNukes Pipe Server Host -->
+        <cue name="Register_Python_Module" instantiate="true" namespace="this">
+            <conditions>
+                <event_cue_signalled cue="md.Pipe_Server_Host.Reloaded"/>
+            </conditions>
+            <actions>
+                <debug_text text="'NVDA Accessibility: Registering Python module with pipe server...'" filter="general"/>
+                <signal_cue_instantly
+                    cue="md.Pipe_Server_Host.Register_Module"
+                    param="'extensions/nvda_accessibility/python/nvda_bridge.py'"/>
+            </actions>
+        </cue>
+
+        <!-- Main initialization cue -->
+        <cue name="NVDA_Init" instantiate="true" namespace="this">
+            <conditions>
+                <event_game_loaded />
+            </conditions>
+            <actions>
+                <debug_text text="'NVDA Accessibility: Game loaded, initializing...'" filter="general"/>
+                <!-- Signal Lua to initialize after a short delay to let pipes connect -->
+                <raise_lua_event name="'NVDA.Init'" param="'started'"/>
+            </actions>
+        </cue>
+
+        <!-- Load Lua file using SirNukes Lua Loader (fallback if ui.xml doesn't work) -->
+        <cue name="Load_Lua_File" instantiate="true" namespace="this">
+            <conditions>
+                <event_ui_triggered screen="'Lua_Loader'" control="'Ready'" />
+            </conditions>
+            <actions>
+                <debug_text text="'NVDA Accessibility: Lua_Loader ready, loading Lua file...'" filter="general"/>
+                <raise_lua_event
+                    name="'Lua_Loader.Load'"
+                    param="'extensions.nvda_accessibility.ui.nvda_accessibility'"/>
+            </actions>
+        </cue>
+
+        <!-- Handle Lua file loaded confirmation -->
+        <cue name="NVDA_Lua_Loaded" instantiate="true" namespace="this">
+            <conditions>
+                <event_ui_triggered screen="'Lua_Loader'" control="'Loaded extensions.nvda_accessibility.ui.nvda_accessibility'" />
+            </conditions>
+            <actions>
+                <debug_text text="'NVDA Accessibility: Lua file loaded successfully!'" filter="general"/>
+                <raise_lua_event name="'NVDA.Init'" param="'loaded_via_loader'"/>
+            </actions>
+        </cue>
+
+        <!-- Relay speech from Lua to Python via Named Pipes API -->
+        <!-- Lua calls AddUITriggeredEvent("NVDA", "Speak", message) -->
+        <!-- This cue catches it and forwards to Python -->
+        <cue name="NVDA_Speech_Relay" instantiate="true" namespace="this">
+            <conditions>
+                <event_ui_triggered screen="'NVDA'" control="'Speak'" />
+            </conditions>
+            <actions>
+                <set_value name="$text" exact="event.param3"/>
+                <debug_text text="'NVDA Relay: ' + $text" filter="general"/>
+                <signal_cue_instantly
+                    cue="md.Named_Pipes.Write"
+                    param="table[
+                        $pipe = 'x4_nvda',
+                        $msg = $text
+                    ]"/>
+            </actions>
+        </cue>
+
+        <!-- Simple Menu Options Registration -->
+        <cue name="Register_NVDA_Options" instantiate="true" namespace="this">
+            <conditions>
+                <event_cue_signalled cue="md.Simple_Menu_Options.Reloaded"/>
+            </conditions>
+            <actions>
+                <!-- Enable/Disable toggle -->
+                <signal_cue_instantly
+                    cue="md.Simple_Menu_Options.Register_Option"
+                    param="table[
+                        $id         = 'nvda_enabled',
+                        $name       = 'Enable NVDA Accessibility',
+                        $mouseover  = 'Toggle screen reader announcements for UI focus changes',
+                        $default    = 1,
+                        $type       = 'button',
+                        $callback   = NVDA_Toggle_Callback
+                    ]"/>
+
+                <!-- Verbosity setting -->
+                <signal_cue_instantly
+                    cue="md.Simple_Menu_Options.Register_Option"
+                    param="table[
+                        $id         = 'nvda_verbosity',
+                        $name       = 'NVDA Verbosity',
+                        $mouseover  = 'How much information to announce (0=Brief, 1=Normal, 2=Verbose)',
+                        $default    = 1,
+                        $type       = 'slidercell',
+                        $min        = 0,
+                        $max        = 2,
+                        $callback   = NVDA_Verbosity_Callback
+                    ]"/>
+            </actions>
+        </cue>
+
+        <!-- Toggle callback -->
+        <cue name="NVDA_Toggle_Callback" instantiate="true" namespace="this">
+            <conditions>
+                <event_cue_signalled />
+            </conditions>
+            <actions>
+                <set_value name="$enabled" exact="event.param.$value"/>
+                <debug_text text="'NVDA Accessibility: Enabled = ' + $enabled" filter="general"/>
+                <raise_lua_event name="'NVDA.SetEnabled'" param="$enabled"/>
+            </actions>
+        </cue>
+
+        <!-- Verbosity callback -->
+        <cue name="NVDA_Verbosity_Callback" instantiate="true" namespace="this">
+            <conditions>
+                <event_cue_signalled />
+            </conditions>
+            <actions>
+                <set_value name="$verbosity" exact="event.param.$value"/>
+                <debug_text text="'NVDA Accessibility: Verbosity = ' + $verbosity" filter="general"/>
+                <raise_lua_event name="'NVDA.SetVerbosity'" param="$verbosity"/>
+            </actions>
+        </cue>
+
+    </cues>
+</mdscript>

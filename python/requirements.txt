@@ -1,0 +1,2 @@
+# X4 NVDA Bridge Server Requirements
+pywin32>=300

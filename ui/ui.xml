@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<addon name="nvda_accessibility" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    <environment type="menus">
+        <file name="ui/nvda_accessibility.lua" />
+        <dependency name="ego_detailmonitorHelper" />
+        <dependency name="sn_mod_support_apis" />
+    </environment>
+</addon>
