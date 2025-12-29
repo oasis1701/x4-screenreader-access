@@ -1,7 +1,7 @@
 # X4 NVDA Accessibility Mod - Progress Report
 
-**Last Updated:** December 28, 2025
-**Status:** WORKING - Iteration 12.2
+**Last Updated:** December 29, 2025
+**Status:** WORKING - Iteration 12.3
 
 ---
 
@@ -20,6 +20,7 @@ NVDA reads menu items, toggle states, slider values, dropdown options, and toolt
 | Tooltips | `C.GetMouseOverText()` |
 | Dropdown open | Lists all options with selection marked |
 | Silent UI nav | `onUpdate` polling fallback |
+| Extensions menu | On/Off status via `GetButtonText()` (column 6) |
 
 ### Known Limitations
 | Issue | Reason |
@@ -28,7 +29,7 @@ NVDA reads menu items, toggle states, slider values, dropdown options, and toolt
 
 ---
 
-## Key Files
+## Key Files and folders
 
 | File | Purpose |
 |------|---------|
@@ -36,6 +37,9 @@ NVDA reads menu items, toggle states, slider values, dropdown options, and toolt
 | `extensions/nvda_accessibility/md/nvda_accessibility.xml` | MD relay script |
 | `extensions/nvda_accessibility/python/nvda_bridge.py` | Python NVDA bridge |
 | `C:\Users\rhadi\Documents\Egosoft\X4\98775138\debug.txt` | Debug log |
+| `_unpacked/` | Game's unpacked source files (UI scripts, MD, libraries) |
+| `_unpacked/ui/` | UI Lua scripts - primary reference for widget behavior |
+| `_stubs/x4_api_stubs.lua` | Lua API stubs for IDE autocomplete/type checking |
 
 ---
 
@@ -72,3 +76,13 @@ PlaySound hook / onUpdate polling / Dropdown handlers
 - Read debug.txt first if user reports issues
 - `widget_fullscreen.lua` has FFI definitions (reference only)
 - Protected UI mode must be OFF
+
+---
+
+## Recent Changes (Dec 29, 2025)
+
+### Fixed: Extensions menu toggle states
+- **Issue**: Extensions menu showed extension names but not On/Off status
+- **Cause**: Column iteration was limited to 1-5, but extensions menu places the enable/disable button in column 6
+- **Fix**: Extended `getCurrentSelectionText()` to iterate columns 1-10 instead of 1-5
+- **File**: `nvda_accessibility.lua` line 358

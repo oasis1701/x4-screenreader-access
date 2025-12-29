@@ -353,8 +353,9 @@ local function getCurrentSelectionText()
     local text = nil
     local fallbackText = nil
 
-    -- Try columns 1-5 to find ALL text (name AND value)
-    for col = 1, 5 do
+    -- Try columns 1-10 to find ALL text (name AND value)
+    -- Extensions menu uses up to column 7, allow extra for future menus
+    for col = 1, 10 do
         pcall(function()
             local cell = GetCellContent(widget, row, col)
             if cell then
