@@ -2,7 +2,7 @@
 """
 X4 Foundations NVDA Bridge - SirNukes Pipe Server Module
 
-This module integrates with SirNukes' pipe server (sn_x4_python_pipe_server_py) to receive
+This module integrates with SirNukes' pipe server (X4_Python_Pipe_Server) to receive
 messages from X4 and forward them to NVDA for text-to-speech output.
 
 The module is loaded by the pipe server when X4 registers it via MD script.
@@ -20,12 +20,12 @@ if sys.platform != 'win32':
 
 # Add the pipe server to path so we can import from it
 script_dir = Path(__file__).parent.resolve()
-pipe_server_dir = script_dir / 'sn_x4_python_pipe_server_py'
+pipe_server_dir = script_dir / 'X4_Python_Pipe_Server'
 if str(pipe_server_dir) not in sys.path:
     sys.path.insert(0, str(pipe_server_dir))
 
 # Import SirNukes pipe classes
-from sn_x4_python_pipe_server_py.Classes import Pipe_Server
+from X4_Python_Pipe_Server.Classes import Pipe_Server
 
 # Name of our pipe - X4 Lua will connect to this
 PIPE_NAME = 'x4_nvda'

@@ -90,6 +90,14 @@ local NVDA = {
     lastSpeakTime = 0,
     lastWidget = nil,
     lastRow = nil,
+    -- New: for onUpdate deduplication
+    lastAnnouncedWidget = nil,
+    lastAnnouncedRow = nil,
+    lastAnnouncedTime = 0,
+    -- New: dropdown tracking
+    activeDropdown = nil,
+    dropdownOptions = {},
+    dropdownStartIndex = 1,
 }
 
 -- Debug logging (writes to X4 debug log)
@@ -376,12 +384,164 @@ local function getCurrentSelectionText()
     return text or fallbackText
 end
 
--- Called when we detect navigation happened
+-- Called when we detect navigation happened (via PlaySound hook)
 local function onNavigationDetected()
+    -- Update announced state to prevent onUpdate from re-announcing
+    local frame = GetActiveFrame and GetActiveFrame()
+    local widget = frame and GetInteractiveObject and GetInteractiveObject(frame)
+    local row = widget and Helper and Helper.currentTableRow and Helper.currentTableRow[widget]
+
+    if widget and row then
+        NVDA.lastAnnouncedWidget = widget
+        NVDA.lastAnnouncedRow = row
+        NVDA.lastAnnouncedTime = GetCurRealTime and GetCurRealTime() or 0
+    end
+
     local text = getCurrentSelectionText()
     if text then
         speakText(text)
     end
+end
+
+-- Universal focus detection via onUpdate polling (fallback for silent UI)
+local function checkForFocusChange()
+    if not NVDA.enabled then return end
+
+    local frame = GetActiveFrame and GetActiveFrame()
+    if not frame then return end
+
+    local widget = GetInteractiveObject and GetInteractiveObject(frame)
+    if not widget then return end
+
+    local row = Helper and Helper.currentTableRow and Helper.currentTableRow[widget]
+    if not row then return end
+
+    -- Skip if same as last announced (deduplication)
+    if widget == NVDA.lastAnnouncedWidget and row == NVDA.lastAnnouncedRow then
+        return
+    end
+
+    -- Skip if recently spoken (debounce: 100ms)
+    local currentTime = GetCurRealTime and GetCurRealTime() or 0
+    if (currentTime - NVDA.lastAnnouncedTime) < 0.1 then
+        return
+    end
+
+    -- New selection detected!
+    NVDA.lastAnnouncedWidget = widget
+    NVDA.lastAnnouncedRow = row
+    NVDA.lastAnnouncedTime = currentTime
+
+    debugLog("onUpdate detected focus change to row " .. tostring(row))
+
+    -- Extract and speak text
+    local text = getCurrentSelectionText()
+    if text then
+        speakText(text)
+    end
+end
+
+-- Dropdown activated handler - announces when dropdown expands
+local function onDropdownActivated(dropdownID)
+    debugLog("Dropdown activated: " .. tostring(dropdownID))
+    NVDA.activeDropdown = dropdownID
+
+    local success, err = pcall(function()
+        local numOptions = C.GetNumDropDownOptions(dropdownID)
+        if numOptions == 0 then
+            debugLog("Dropdown has no options")
+            return
+        end
+
+        local buf = ffi.new("DropDownOption2[?]", numOptions)
+        local n = C.GetDropDownOptions2(buf, numOptions, dropdownID)
+
+        NVDA.dropdownOptions = {}
+        local startOption = ffi.string(C.GetDropDownStartOption(dropdownID))
+        NVDA.dropdownStartIndex = 1
+
+        debugLog("GetDropDownStartOption returned: '" .. tostring(startOption) .. "' for dropdown " .. tostring(dropdownID))
+
+        for i = 0, n - 1 do
+            local opt = {
+                id = ffi.string(buf[i].id),
+                text = ffi.string(buf[i].text),
+                active = buf[i].active
+            }
+            table.insert(NVDA.dropdownOptions, opt)
+            debugLog("Option " .. (i+1) .. ": id='" .. opt.id .. "' text='" .. opt.text .. "'")
+            if opt.id == startOption then
+                NVDA.dropdownStartIndex = i + 1
+                debugLog("  -> MATCHED as selected (index " .. (i+1) .. ")")
+            end
+        end
+
+        if #NVDA.dropdownOptions > 0 then
+            -- Build announcement with all options, marking the selected one
+            local parts = {"Dropdown."}
+            for i, opt in ipairs(NVDA.dropdownOptions) do
+                if i == NVDA.dropdownStartIndex then
+                    table.insert(parts, i .. ": " .. opt.text .. ", selected.")
+                else
+                    table.insert(parts, i .. ": " .. opt.text .. ".")
+                end
+            end
+            speakText(table.concat(parts, " "))
+        end
+    end)
+
+    if not success then
+        debugLog("Error in onDropdownActivated: " .. tostring(err))
+    end
+end
+
+-- Dropdown confirmed handler - announces when selection is made
+local function onDropdownConfirmed(dropdownID, optionID)
+    debugLog("Dropdown confirmed: " .. tostring(dropdownID) .. " option: " .. tostring(optionID))
+    if NVDA.activeDropdown == dropdownID then
+        for _, opt in ipairs(NVDA.dropdownOptions) do
+            if opt.id == optionID then
+                speakText("Selected: " .. opt.text)
+                break
+            end
+        end
+        NVDA.activeDropdown = nil
+        NVDA.dropdownOptions = {}
+    end
+end
+
+-- Patch Helper.setDropDownScript to attach our handlers to all dropdowns
+local function setupDropdownHooks()
+    if not Helper or not Helper.setDropDownScript then
+        debugLog("Helper.setDropDownScript not available")
+        return false
+    end
+
+    local originalSetDropDownScript = Helper.setDropDownScript
+    Helper.setDropDownScript = function(menu, id, tableobj, row, col, activateScript, confirmScript, removedScript)
+        -- Wrap activate script (capture varargs into table to avoid Lua scoping issue)
+        local wrappedActivate = function(dropdown, ...)
+            local args = {...}
+            if activateScript then
+                pcall(function() activateScript(dropdown, table.unpack(args)) end)
+            end
+            pcall(function() onDropdownActivated(dropdown) end)
+        end
+
+        -- Wrap confirm script (capture varargs into table to avoid Lua scoping issue)
+        local wrappedConfirm = function(dropdown, optionID, ...)
+            local args = {...}
+            if confirmScript then
+                pcall(function() confirmScript(dropdown, optionID, table.unpack(args)) end)
+            end
+            pcall(function() onDropdownConfirmed(dropdown, optionID) end)
+        end
+
+        return originalSetDropDownScript(menu, id, tableobj, row, col, wrappedActivate, wrappedConfirm, removedScript)
+    end
+
+    debugLog("Helper.setDropDownScript patched for NVDA")
+    return true
 end
 
 -- Wrap PlaySound to detect UI navigation
@@ -402,6 +562,14 @@ local function setupPlaySoundHook()
         elseif soundname == "ui_positive_select" then
             -- User selected an item
             debugLog("Item selected")
+        elseif soundname == "ui_negative_back" then
+            -- User pressed escape/back
+            if NVDA.activeDropdown then
+                speakText("Cancelled")
+                NVDA.activeDropdown = nil
+                NVDA.dropdownOptions = {}
+                debugLog("Dropdown cancelled")
+            end
         end
 
         -- Call original function
@@ -435,6 +603,26 @@ local function init()
     debugLog("Setting up PlaySound hook...")
     local hookResult = setupPlaySoundHook()
     debugLog("PlaySound hook result: " .. tostring(hookResult))
+
+    -- Setup dropdown hooks for open/close announcements
+    debugLog("Setting up dropdown hooks...")
+    local dropdownHookResult = setupDropdownHooks()
+    debugLog("Dropdown hook result: " .. tostring(dropdownHookResult))
+
+    -- Setup onUpdate polling for universal focus detection
+    debugLog("Setting up onUpdate polling...")
+    if SetScript then
+        local success, err = pcall(function()
+            SetScript("onUpdate", checkForFocusChange)
+        end)
+        if success then
+            debugLog("onUpdate polling registered")
+        else
+            debugLog("Failed to register onUpdate: " .. tostring(err))
+        end
+    else
+        debugLog("SetScript not available for onUpdate")
+    end
 
     -- Communication uses MD relay (Lua cannot access pipes directly)
     debugLog("Using MD relay for NVDA communication (via SirNukes Named_Pipes API)")
