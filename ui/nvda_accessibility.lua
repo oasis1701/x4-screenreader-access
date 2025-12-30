@@ -90,15 +90,21 @@ local NVDA = {
     lastSpeakTime = 0,
     lastWidget = nil,
     lastRow = nil,
+    lastCol = nil,              -- For grid mode column tracking
     -- New: for onUpdate deduplication
     lastAnnouncedWidget = nil,
     lastAnnouncedRow = nil,
+    lastAnnouncedCol = nil,     -- For grid mode column tracking
     lastAnnouncedTime = 0,
     -- New: dropdown tracking
     activeDropdown = nil,
     dropdownOptions = {},
     dropdownStartIndex = 1,
 }
+
+-- Track widgets confirmed to be grids (column changes detected)
+-- This distinguishes true grids from multi-column display tables (like settings)
+local knownGridWidgets = {}
 
 -- Debug logging (writes to X4 debug log)
 local function debugLog(message)
@@ -341,48 +347,84 @@ local function getCurrentSelectionText()
         return nil
     end
 
-    -- Check if this is a new selection
-    if widget == NVDA.lastWidget and row == NVDA.lastRow then
-        return nil -- Same selection, don't repeat
+    -- Get current column
+    local col = nil
+    if Helper and Helper.currentTableCol then
+        col = Helper.currentTableCol[widget]
     end
 
+    -- Detect grid mode by checking if column CHANGED (not just exists)
+    -- This distinguishes true grids from multi-column display tables (like settings)
+    if col and col > 0 then
+        if NVDA.lastWidget == widget and NVDA.lastCol and NVDA.lastCol ~= col then
+            -- Column changed for same widget = this is a confirmed grid
+            knownGridWidgets[widget] = true
+            debugLog("Widget " .. tostring(widget) .. " confirmed as grid (col changed: " .. tostring(NVDA.lastCol) .. " -> " .. tostring(col) .. ")")
+        end
+    end
+
+    -- Use grid mode only for confirmed grid widgets
+    local gridMode = knownGridWidgets[widget]
+
+    -- Deduplication: check widget, row, AND column (for grids)
+    if widget == NVDA.lastWidget and row == NVDA.lastRow then
+        if gridMode then
+            -- Grid mode: also check column
+            if col == NVDA.lastCol then
+                return nil -- Same cell, don't repeat
+            end
+        else
+            -- List mode: same row means same selection
+            return nil
+        end
+    end
+
+    -- Update tracking state
     NVDA.lastWidget = widget
     NVDA.lastRow = row
+    NVDA.lastCol = col
 
-    -- Try to get text from cells in this row
-    local text = nil
-    local fallbackText = nil
-
-    -- Try columns 1-10 to find ALL text (name AND value)
-    -- Extensions menu uses up to column 7, allow extra for future menus
-    for col = 1, 10 do
+    if gridMode then
+        -- GRID MODE: Read only the focused cell
+        debugLog("Grid mode: reading cell at row " .. row .. ", col " .. col)
+        local text = nil
         pcall(function()
             local cell = GetCellContent(widget, row, col)
             if cell then
-                local cellText = getTextFromCell(cell)
-                if cellText and cellText ~= "" then
-                    -- Check if this is the "Item X" fallback (widget ID)
-                    if cellText:match("^Item %d+$") then
-                        -- Save as fallback only - don't include in main text
-                        if not fallbackText then
-                            fallbackText = cellText
-                        end
-                    else
-                        -- Real text found - include it
-                        if text then
-                            text = text .. ", " .. cellText
+                text = getTextFromCell(cell)
+            end
+        end)
+        return text
+    else
+        -- LIST MODE: Read all columns (existing behavior for settings menus)
+        local text = nil
+        local fallbackText = nil
+
+        -- Try columns 1-10 to find ALL text (name AND value)
+        for colIdx = 1, 10 do
+            pcall(function()
+                local cell = GetCellContent(widget, row, colIdx)
+                if cell then
+                    local cellText = getTextFromCell(cell)
+                    if cellText and cellText ~= "" then
+                        if cellText:match("^Item %d+$") then
+                            if not fallbackText then
+                                fallbackText = cellText
+                            end
                         else
-                            text = cellText
+                            if text then
+                                text = text .. ", " .. cellText
+                            else
+                                text = cellText
+                            end
                         end
                     end
                 end
-            end
-        end)
-        -- DON'T break early - continue to read ALL columns for values!
-    end
+            end)
+        end
 
-    -- Only use fallback if no real text was found
-    return text or fallbackText
+        return text or fallbackText
+    end
 end
 
 -- Called when we detect navigation happened (via PlaySound hook)
@@ -391,10 +433,12 @@ local function onNavigationDetected()
     local frame = GetActiveFrame and GetActiveFrame()
     local widget = frame and GetInteractiveObject and GetInteractiveObject(frame)
     local row = widget and Helper and Helper.currentTableRow and Helper.currentTableRow[widget]
+    local col = widget and Helper and Helper.currentTableCol and Helper.currentTableCol[widget]
 
     if widget and row then
         NVDA.lastAnnouncedWidget = widget
         NVDA.lastAnnouncedRow = row
+        NVDA.lastAnnouncedCol = col  -- Track column for grid mode
         NVDA.lastAnnouncedTime = GetCurRealTime and GetCurRealTime() or 0
     end
 
@@ -417,9 +461,29 @@ local function checkForFocusChange()
     local row = Helper and Helper.currentTableRow and Helper.currentTableRow[widget]
     if not row then return end
 
+    -- Get column for grid mode support
+    local col = Helper and Helper.currentTableCol and Helper.currentTableCol[widget]
+
+    -- Detect grid mode by checking if column CHANGED (same logic as getCurrentSelectionText)
+    if col and col > 0 then
+        if widget == NVDA.lastAnnouncedWidget and NVDA.lastAnnouncedCol and NVDA.lastAnnouncedCol ~= col then
+            knownGridWidgets[widget] = true
+        end
+    end
+
+    -- Use grid mode only for confirmed grid widgets
+    local gridMode = knownGridWidgets[widget]
+
     -- Skip if same as last announced (deduplication)
     if widget == NVDA.lastAnnouncedWidget and row == NVDA.lastAnnouncedRow then
-        return
+        -- For grids, also check if column changed
+        if gridMode then
+            if col == NVDA.lastAnnouncedCol then
+                return  -- Same cell
+            end
+        else
+            return  -- List mode: same row = same selection
+        end
     end
 
     -- Skip if recently spoken (debounce: 100ms)
@@ -431,9 +495,11 @@ local function checkForFocusChange()
     -- New selection detected!
     NVDA.lastAnnouncedWidget = widget
     NVDA.lastAnnouncedRow = row
+    NVDA.lastAnnouncedCol = col  -- Track column for grid mode
     NVDA.lastAnnouncedTime = currentTime
 
-    debugLog("onUpdate detected focus change to row " .. tostring(row))
+    debugLog("onUpdate detected focus change to row " .. tostring(row) ..
+             (gridMode and (", col " .. tostring(col)) or ""))
 
     -- Extract and speak text
     local text = getCurrentSelectionText()

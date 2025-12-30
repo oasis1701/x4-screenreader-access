@@ -1,7 +1,7 @@
 # X4 NVDA Accessibility Mod - Progress Report
 
 **Last Updated:** December 29, 2025
-**Status:** WORKING - Iteration 12.3
+**Status:** WORKING - Iteration 12.5
 
 ---
 
@@ -21,11 +21,13 @@ NVDA reads menu items, toggle states, slider values, dropdown options, and toolt
 | Dropdown open | Lists all options with selection marked |
 | Silent UI nav | `onUpdate` polling fallback |
 | Extensions menu | On/Off status via `GetButtonText()` (column 6) |
+| Grid navigation | Detects grids via column-change tracking (`knownGridWidgets`), single cell for grids, full row for lists |
 
 ### Known Limitations
 | Issue | Reason |
 |-------|--------|
 | Dropdown arrow keys | `moveDropDownSelection()` fires no callbacks; `private.activeDropDown.highlighted` is internal |
+| Silent grid items | Some items (Deploy buttons, Scan mode) have no extractable text - needs investigation |
 
 ---
 
@@ -81,8 +83,11 @@ PlaySound hook / onUpdate polling / Dropdown handlers
 
 ## Recent Changes (Dec 29, 2025)
 
-### Fixed: Extensions menu toggle states
-- **Issue**: Extensions menu showed extension names but not On/Off status
-- **Cause**: Column iteration was limited to 1-5, but extensions menu places the enable/disable button in column 6
-- **Fix**: Extended `getCurrentSelectionText()` to iterate columns 1-10 instead of 1-5
-- **File**: `nvda_accessibility.lua` line 358
+### Grid navigation (LEFT/RIGHT arrows)
+- Tracks column changes to detect true grids vs multi-column lists
+- `knownGridWidgets[widget]` remembers confirmed grids
+- Settings/Extensions menus: full row (column never changes)
+- Ship Interactions: single cell (column changes on L/R)
+
+### Extensions menu toggle states
+- Extended column iteration to 1-10 (button in column 6)
