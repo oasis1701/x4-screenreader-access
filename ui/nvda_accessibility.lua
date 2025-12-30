@@ -60,7 +60,18 @@ ffi.cdef[[
         bool hasOverrideColor;
     } DropDownOption2;
 
+    typedef struct {
+        const char* text;
+        int32_t x;
+        int32_t y;
+        const char* alignment;
+        Color color;
+        Font font;
+        float glowfactor;
+    } TextInfo;
+
     const char* GetMouseOverText(const int widgetid);
+    bool GetButtonText2Details(const int buttonid, TextInfo* textinfo);
     const char* GetMouseOverTextAdditional(const int widgetid);
     bool IsCheckBoxChecked(const int checkboxid);
     bool IsCheckBoxActive(const int checkboxid);
@@ -206,18 +217,15 @@ local function getTextFromCell(cellWidgetID)
         debugLog("GetSliderCellValues returned: " .. result2)
     end
 
-    -- 3. Try button text (for toggle On/Off buttons in settings)
+    -- 3. Try button text - DON'T require IsType check (some buttons fail IsType)
     if not value then
         local success3, result3 = pcall(function()
-            if IsType and IsType(cellWidgetID, "button") then
-                debugLog("Widget " .. cellWidgetID .. " IS a button")
-                -- GetButtonText is a global Lua function (not FFI)
-                if GetButtonText then
-                    local buttonText = GetButtonText(cellWidgetID)
-                    if buttonText and buttonText ~= "" then
-                        debugLog("GetButtonText returned: " .. buttonText)
-                        return buttonText
-                    end
+            -- GetButtonText is a global Lua function (not FFI)
+            if GetButtonText then
+                local buttonText = GetButtonText(cellWidgetID)
+                if buttonText and buttonText ~= "" then
+                    debugLog("GetButtonText returned: " .. buttonText)
+                    return buttonText
                 end
             end
             return nil
@@ -227,9 +235,45 @@ local function getTextFromCell(cellWidgetID)
         end
     end
 
-    -- 4. Try dropdown selected text (iterate options to find current selection)
+    -- 3b. Try FFI GetButtonText2Details for button secondary text
+    if not value then
+        local success3b, result3b = pcall(function()
+            local textinfo = ffi.new("TextInfo")
+            if C.GetButtonText2Details(cellWidgetID, textinfo) then
+                local text = ffi.string(textinfo.text)
+                if text and text ~= "" then
+                    debugLog("GetButtonText2Details returned: " .. text)
+                    return text
+                end
+            end
+            return nil
+        end)
+        if success3b and result3b then
+            value = result3b
+        end
+    end
+
+    -- 4. Try dropdown LABEL text first (for expandable menu items like Deploy/Modes)
     if not value then
         local success4, result4 = pcall(function()
+            local textinfo = ffi.new("DropDownTextInfo")
+            if C.GetDropDownTextDetails(cellWidgetID, textinfo) then
+                local text = ffi.string(textinfo.textOverride)
+                if text and text ~= "" then
+                    debugLog("GetDropDownTextDetails returned: " .. text)
+                    return text
+                end
+            end
+            return nil
+        end)
+        if success4 and result4 then
+            value = result4
+        end
+    end
+
+    -- 4b. Try dropdown selected text (iterate options to find current selection)
+    if not value then
+        local success4b, result4b = pcall(function()
             if IsType and IsType(cellWidgetID, "dropdown") then
                 debugLog("Widget " .. cellWidgetID .. " IS a dropdown")
                 -- Get the current selected option ID
@@ -258,8 +302,8 @@ local function getTextFromCell(cellWidgetID)
             end
             return nil
         end)
-        if success4 and result4 then
-            value = result4
+        if success4b and result4b then
+            value = result4b
         end
     end
 
@@ -319,7 +363,23 @@ local function getTextFromCell(cellWidgetID)
         return table.concat(parts, ". ")  -- Use period for natural speech separation
     end
 
-    debugLog("All methods failed, returning widget ID: " .. tostring(cellWidgetID))
+    -- Log widget type for debugging unknown widgets
+    if IsType then
+        local foundType = nil
+        for _, t in ipairs({"button", "checkbox", "text", "icon", "slidercell", "dropdown", "frame", "cell", "table", "flowchart", "graph", "rendertarget"}) do
+            if IsType(cellWidgetID, t) then
+                foundType = t
+                break
+            end
+        end
+        if foundType then
+            debugLog("All methods failed for widget " .. cellWidgetID .. " (type: " .. foundType .. ")")
+        else
+            debugLog("All methods failed for widget " .. cellWidgetID .. " (type: UNKNOWN)")
+        end
+    else
+        debugLog("All methods failed, returning widget ID: " .. tostring(cellWidgetID))
+    end
     return "Item " .. tostring(cellWidgetID)
 end
 

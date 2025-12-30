@@ -1,7 +1,7 @@
 # X4 NVDA Accessibility Mod - Progress Report
 
 **Last Updated:** December 29, 2025
-**Status:** WORKING - Iteration 12.5
+**Status:** WORKING - Iteration 12.6
 
 ---
 
@@ -22,12 +22,12 @@ NVDA reads menu items, toggle states, slider values, dropdown options, and toolt
 | Silent UI nav | `onUpdate` polling fallback |
 | Extensions menu | On/Off status via `GetButtonText()` (column 6) |
 | Grid navigation | Detects grids via column-change tracking (`knownGridWidgets`), single cell for grids, full row for lists |
+| Dropdown labels | `C.GetDropDownTextDetails()` for expandable menu items (Deploy, Modes) |
 
 ### Known Limitations
 | Issue | Reason |
 |-------|--------|
 | Dropdown arrow keys | `moveDropDownSelection()` fires no callbacks; `private.activeDropDown.highlighted` is internal |
-| Silent grid items | Some items (Deploy buttons, Scan mode) have no extractable text - needs investigation |
 
 ---
 
@@ -88,6 +88,9 @@ PlaySound hook / onUpdate polling / Dropdown handlers
 - `knownGridWidgets[widget]` remembers confirmed grids
 - Settings/Extensions menus: full row (column never changes)
 - Ship Interactions: single cell (column changes on L/R)
+
+### Dropdown labels (Deploy, Modes)
+- Added `C.GetDropDownTextDetails()` for expandable menu item labels
 
 ### Extensions menu toggle states
 - Extended column iteration to 1-10 (button in column 6)
