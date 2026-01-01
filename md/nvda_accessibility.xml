@@ -127,5 +127,73 @@
             </actions>
         </cue>
 
+        <!-- ========== GLOBAL HOTKEYS (using SirNukes Hotkey API) ========== -->
+
+        <!-- Register hotkeys with the Hotkey API (matching kuertee's working pattern) -->
+        <cue name="Register_Hotkeys" instantiate="true" namespace="this">
+            <conditions>
+                <event_cue_signalled cue="md.Hotkey_API.Reloaded"/>
+            </conditions>
+            <actions>
+                <debug_text text="'NVDA Accessibility: Registering hotkeys...'" filter="general"/>
+
+                <!-- Step 1: Register the KEY FIRST (kuertee's order) -->
+                <signal_cue_instantly
+                    cue="md.Hotkey_API.Register_Key"
+                    param="table[$key='ctrl t', $id='nvda_read_target']"/>
+
+                <!-- Step 2: Register the ACTION with $onRelease (not $cue) -->
+                <signal_cue_instantly
+                    cue="md.Hotkey_API.Register_Action"
+                    param="table[
+                        $id = 'nvda_read_target',
+                        $onRelease = NVDA_Read_Target_Callback,
+                        $name = 'NVDA: Read Target Status',
+                        $description = 'Announces target shield and hull via screen reader'
+                    ]"/>
+
+                <debug_text text="'NVDA Accessibility: Hotkey Ctrl+T registered'" filter="general"/>
+            </actions>
+        </cue>
+
+        <!-- Callback when "Read Target Status" hotkey is pressed -->
+        <cue name="NVDA_Read_Target_Callback" instantiate="true" namespace="this">
+            <conditions>
+                <event_cue_signalled/>
+            </conditions>
+            <actions>
+                <debug_text text="'NVDA Accessibility: Read Target hotkey pressed'" filter="general"/>
+
+                <set_value name="$target" exact="player.target"/>
+
+                <do_if value="not $target">
+                    <!-- No target selected -->
+                    <debug_text text="'NVDA Accessibility: No target'" filter="general"/>
+                    <signal_cue_instantly
+                        cue="md.Named_Pipes.Write"
+                        param="table[$pipe = 'x4_nvda', $msg = 'SPEAK|No target']"/>
+                </do_if>
+                <do_elseif value="$target">
+                    <!-- Get shield and hull percentages -->
+                    <set_value name="$hull" exact="$target.hullpercentage"/>
+                    <set_value name="$shield" exact="$target.shieldpercentage"/>
+                    <set_value name="$hasShield" exact="$target.maxshield gt 0"/>
+
+                    <debug_text text="'NVDA Accessibility: Target hull=' + $hull + ' shield=' + $shield + ' hasShield=' + $hasShield" filter="general"/>
+
+                    <do_if value="$hasShield">
+                        <set_value name="$msg" exact="'SPEAK|Shield ' + $shield + ' percent, Hull ' + $hull + ' percent'"/>
+                    </do_if>
+                    <do_else>
+                        <set_value name="$msg" exact="'SPEAK|Hull ' + $hull + ' percent'"/>
+                    </do_else>
+
+                    <signal_cue_instantly
+                        cue="md.Named_Pipes.Write"
+                        param="table[$pipe = 'x4_nvda', $msg = $msg]"/>
+                </do_elseif>
+            </actions>
+        </cue>
+
     </cues>
 </mdscript>

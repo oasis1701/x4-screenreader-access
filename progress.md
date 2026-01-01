@@ -1,7 +1,7 @@
 # X4 NVDA Accessibility Mod - Progress Report
 
-**Last Updated:** December 29, 2025
-**Status:** WORKING - Iteration 12.6
+**Last Updated:** December 31, 2025
+**Status:** WORKING - Iteration 12.7
 
 ---
 
@@ -23,6 +23,7 @@ NVDA reads menu items, toggle states, slider values, dropdown options, and toolt
 | Extensions menu | On/Off status via `GetButtonText()` (column 6) |
 | Grid navigation | Detects grids via column-change tracking (`knownGridWidgets`), single cell for grids, full row for lists |
 | Dropdown labels | `C.GetDropDownTextDetails()` for expandable menu items (Deploy, Modes) |
+| **Global hotkey: Target status** | "NVDA: Read Target Status" - reads target shield/hull (via SirNukes Hotkey API + MD) |
 
 ### Known Limitations
 | Issue | Reason |
@@ -81,7 +82,62 @@ PlaySound hook / onUpdate polling / Dropdown handlers
 
 ---
 
-## Recent Changes (Dec 29, 2025)
+## Recent Changes (Dec 31, 2025)
+
+### Global Hotkeys for Gameplay Info
+- **"NVDA: Read Target Status"**: Reads current target's shield and hull percentages
+- Uses **SirNukes Hotkey API** (MD-based)
+  - Lua keyboard hooks (`RegisterEvent("keyboardInput", ...)`) only work in menus, not gameplay
+  - Hotkey API uses external Python for keyboard capture, works everywhere
+- **IMPORTANT**: Default key registration often fails. User must manually assign hotkey in X4 Options → Controls
+- MD queries `player.target.hullpercentage`, `player.target.shieldpercentage`
+- Announces "Shield X percent, Hull Y percent" or "No target"
+
+### How to Add More Hotkeys (for future sessions)
+1. **Register in MD** (`nvda_accessibility.xml`) inside `Register_Hotkeys` cue:
+   ```xml
+   <!-- Register KEY first -->
+   <signal_cue_instantly cue="md.Hotkey_API.Register_Key"
+       param="table[$key='ctrl r', $id='nvda_your_action_id']"/>
+   <!-- Then register ACTION with $onRelease -->
+   <signal_cue_instantly cue="md.Hotkey_API.Register_Action"
+       param="table[
+           $id = 'nvda_your_action_id',
+           $onRelease = Your_Callback_Cue,
+           $name = 'NVDA: Your Action Name',
+           $description = 'Description for controls menu'
+       ]"/>
+   ```
+2. **Create callback cue** that queries game state and writes to pipe:
+   ```xml
+   <cue name="Your_Callback_Cue" instantiate="true" namespace="this">
+       <conditions><event_cue_signalled/></conditions>
+       <actions>
+           <!-- Query game data, e.g.: player.ship.speed, player.money -->
+           <signal_cue_instantly cue="md.Named_Pipes.Write"
+               param="table[$pipe='x4_nvda', $msg='SPEAK|Your message']"/>
+       </actions>
+   </cue>
+   ```
+3. **Key lessons learned**:
+   - Use `$onRelease` NOT `$cue` in Register_Action
+   - Call `Register_Key` BEFORE `Register_Action`
+   - Property names end with "percentage" (e.g., `hullpercentage`, `shieldpercentage`)
+   - Reference `kuertee_accessibility_features` for working examples
+
+4. **Useful MD properties for future hotkeys**:
+   - `player.target` - current target (check `not player.target` for none)
+   - `player.target.hullpercentage`, `player.target.shieldpercentage`
+   - `player.target.name`, `player.target.knownname`
+   - `player.ship.hullpercentage`, `player.ship.shieldpercentage` - player's own ship
+   - `player.ship.speed` - current speed
+   - `player.money` - player credits
+   - `player.sector.knownname` - current sector name
+   - See `_unpacked/md/` for more examples (search for property usage)
+
+---
+
+## Previous Changes (Dec 29, 2025)
 
 ### Grid navigation (LEFT/RIGHT arrows)
 - Tracks column changes to detect true grids vs multi-column lists
