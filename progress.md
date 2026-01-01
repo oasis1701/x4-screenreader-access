@@ -23,7 +23,7 @@ NVDA reads menu items, toggle states, slider values, dropdown options, and toolt
 | Extensions menu | On/Off status via `GetButtonText()` (column 6) |
 | Grid navigation | Detects grids via column-change tracking (`knownGridWidgets`), single cell for grids, full row for lists |
 | Dropdown labels | `C.GetDropDownTextDetails()` for expandable menu items (Deploy, Modes) |
-| **Global hotkey: Target status** | "NVDA: Read Target Status" - reads target shield/hull (via SirNukes Hotkey API + MD) |
+| **Global hotkey: Target status** | "NVDA: Read Target Status" - reads target shield/hull/distance/name (via SirNukes Hotkey API + MD) |
 
 ### Known Limitations
 | Issue | Reason |
@@ -90,8 +90,8 @@ PlaySound hook / onUpdate polling / Dropdown handlers
   - Lua keyboard hooks (`RegisterEvent("keyboardInput", ...)`) only work in menus, not gameplay
   - Hotkey API uses external Python for keyboard capture, works everywhere
 - **IMPORTANT**: Default key registration often fails. User must manually assign hotkey in X4 Options → Controls
-- MD queries `player.target.hullpercentage`, `player.target.shieldpercentage`
-- Announces "Shield X percent, Hull Y percent" or "No target"
+- MD queries `player.target.hullpercentage`, `player.target.shieldpercentage`, `player.target.distanceto.{player.ship}`, `player.target.knownname`
+- Announces "Shield X percent, Hull Y percent, Distance Z kilometers, [Name]" or "No target"
 
 ### How to Add More Hotkeys (for future sessions)
 1. **Register in MD** (`nvda_accessibility.xml`) inside `Register_Hotkeys` cue:

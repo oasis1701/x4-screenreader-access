@@ -179,13 +179,21 @@
                     <set_value name="$shield" exact="$target.shieldpercentage"/>
                     <set_value name="$hasShield" exact="$target.maxshield gt 0"/>
 
-                    <debug_text text="'NVDA Accessibility: Target hull=' + $hull + ' shield=' + $shield + ' hasShield=' + $hasShield" filter="general"/>
+                    <!-- Get distance to target in meters -->
+                    <set_value name="$distanceM" exact="$target.distanceto.{player.ship}"/>
+                    <!-- Convert to km for display (divide by 1000, round to 1 decimal) -->
+                    <set_value name="$distanceKm" exact="($distanceM / 1000)f"/>
+                    <!-- Get target name -->
+                    <set_value name="$name" exact="$target.knownname"/>
 
+                    <debug_text text="'NVDA Accessibility: Target hull=' + $hull + ' shield=' + $shield + ' hasShield=' + $hasShield + ' distance=' + $distanceM + 'm name=' + $name" filter="general"/>
+
+                    <!-- Build message with distance and name -->
                     <do_if value="$hasShield">
-                        <set_value name="$msg" exact="'SPEAK|Shield ' + $shield + ' percent, Hull ' + $hull + ' percent'"/>
+                        <set_value name="$msg" exact="'SPEAK|Shield ' + $shield + ' percent, Hull ' + $hull + ' percent, Distance ' + $distanceKm + ' kilometers, ' + $name"/>
                     </do_if>
                     <do_else>
-                        <set_value name="$msg" exact="'SPEAK|Hull ' + $hull + ' percent'"/>
+                        <set_value name="$msg" exact="'SPEAK|Hull ' + $hull + ' percent, Distance ' + $distanceKm + ' kilometers, ' + $name"/>
                     </do_else>
 
                     <signal_cue_instantly
