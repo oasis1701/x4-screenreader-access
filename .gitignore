@@ -1,0 +1,12 @@
+# PyInstaller build output
+python/build/
+python/dist/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+
+# Development/personal files
+progress.md
